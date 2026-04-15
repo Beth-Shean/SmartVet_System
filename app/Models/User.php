@@ -1,0 +1,125 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
+
+class User extends Authenticatable implements MustVerifyEmail
+{
+    /** @use HasFactory<\Database\Factories\UserFactory> */
+    use HasFactory, Notifiable, TwoFactorAuthenticatable, \Illuminate\Auth\MustVerifyEmail;
+
+    const ROLE_ADMIN = 'admin';
+    const ROLE_CLINIC = 'clinic';
+    const ROLE_OWNER = 'owner';
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var list<string>
+     */
+    protected $fillable = [
+        'name',
+        'clinic_name',
+        'clinic_logo',
+        'theme_name',
+        'theme_color',
+        'is_setup_complete',
+        'email',
+        'email_verified_at',
+        'email_verification_code',
+        'email_verification_expires_at',
+        'password',
+        'role',
+        'status',
+        'last_login_at',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var list<string>
+     */
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'two_factor_recovery_codes',
+        'two_factor_secret',
+    ];
+
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'password' => 'hashed',
+            'last_login_at' => 'datetime',
+            'is_setup_complete' => 'boolean',
+            'email_verified_at' => 'datetime',
+            'email_verification_expires_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * Check if user is admin
+     */
+    public function isAdmin(): bool
+    {
+        return $this->role === self::ROLE_ADMIN;
+    }
+
+    /**
+     * Check if user is clinic
+     */
+    public function isClinic(): bool
+    {
+        return $this->role === self::ROLE_CLINIC;
+    }
+
+    /**
+     * Check if user is a pet owner
+     */
+    public function isOwner(): bool
+    {
+        return $this->role === self::ROLE_OWNER;
+    }
+
+    /**
+     * Check if user has a specific role
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->role === $role;
+    }
+
+    /**
+     * Check if user has any of the given roles
+     */
+    public function hasAnyRole(array $roles): bool
+    {
+        return in_array($this->role, $roles);
+    }
+
+    public function owners(): HasMany
+    {
+        return $this->hasMany(Owner::class);
+    }
+
+    public function ownersAsAccount(): HasMany
+    {
+        return $this->hasMany(Owner::class, 'account_user_id');
+    }
+
+    public function inventoryItems(): HasMany
+    {
+        return $this->hasMany(InventoryItem::class);
+    }
+}
