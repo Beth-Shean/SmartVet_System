@@ -1005,7 +1005,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                             </div>
 
                                                             <div className="space-y-2">
-                                                                <label className="text-sm font-medium">Additional Notes</label>
+                                                                <label className="text-sm font-medium">Clinical Evaluation During Physical Examination</label>
                                                                 <Textarea
                                                                     placeholder="Any additional observations or notes..."
                                                                     value={data.notes}

@@ -45,7 +45,7 @@ class LoginResponse implements LoginResponseContract
         if ($user && $user->isOwner()) {
             return $request->wantsJson()
                 ? new JsonResponse('', 204)
-                : redirect()->route('owner.pets');
+                : redirect()->route('owner.welcome');
         }
 
         return $request->wantsJson()

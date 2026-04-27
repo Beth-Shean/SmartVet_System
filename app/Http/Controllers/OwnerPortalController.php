@@ -40,7 +40,7 @@ class OwnerPortalController extends Controller
             });
         })->values()->all();
 
-        $speciesList = \App\Models\PetSpecies::orderBy('name')->get()->map(fn ($s) => [
+        $speciesList = \App\Models\PetSpecies::orderBy('name')->get()->map(fn($s) => [
             'id'   => $s->id,
             'name' => $s->name,
             'icon' => $s->icon,
@@ -85,7 +85,7 @@ class OwnerPortalController extends Controller
             ->whereIn('owner_id', $owners)
             ->findOrFail($petId);
 
-        $documents = $pet->consultations->flatMap(fn ($c) => $c->files)->map(fn ($f) => [
+        $documents = $pet->consultations->flatMap(fn($c) => $c->files)->map(fn($f) => [
             'id'            => $f->id,
             'name'          => $f->original_name ?? $f->file_name,
             'url'           => $f->file_url,
@@ -123,26 +123,26 @@ class OwnerPortalController extends Controller
                 'emergencyContact' => $pet->owner?->emergency_contact,
             ],
             'documents' => $documents,
-            'vaccinations' => $pet->vaccinations->map(fn ($v) => [
+            'vaccinations' => $pet->vaccinations->map(fn($v) => [
                 'vaccine' => $v->vaccine_name,
                 'date'    => $v->vaccination_date->toDateString(),
                 'nextDue' => $v->next_due_date->toDateString(),
                 'clinicName' => $v->clinic_location ?? $clinicName,
             ]),
-            'consultations' => $pet->consultations->map(fn ($c) => [
+            'consultations' => $pet->consultations->map(fn($c) => [
                 'type'           => $c->consultation_type,
                 'date'           => $c->consultation_date->toDateString(),
                 'complaint'      => $c->chief_complaint,
                 'diagnosis'      => $c->diagnosis,
                 'treatment'      => $c->treatment,
                 'clinicName' => $c->clinic_location ?? $clinicName,
-                'inventoryItems' => $c->inventoryUsages->map(fn ($u) => [
+                'inventoryItems' => $c->inventoryUsages->map(fn($u) => [
                     'id'        => $u->id,
                     'name'      => $u->inventoryItem?->name ?? 'Item',
                     'quantity'  => $u->quantity,
                     'unitPrice' => $u->unit_price,
                 ]),
-                'files'          => $c->files->map(fn ($f) => [
+                'files'          => $c->files->map(fn($f) => [
                     'id'            => $f->id,
                     'name'          => $f->original_name ?? $f->file_name,
                     'url'           => $f->file_url,

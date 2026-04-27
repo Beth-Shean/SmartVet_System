@@ -8,7 +8,7 @@ Route::get('/', function () {
     if (Auth::check()) {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        if ($user->isOwner())  return redirect()->route('owner.pets');
+        if ($user->isOwner())  return redirect()->route('owner.welcome');
         if ($user->isClinic()) return redirect()->route('dashboard');
         if ($user->isAdmin())  return redirect()->route('user-management');
     }
@@ -20,7 +20,7 @@ Route::get('portal-home', function () {
     if (Auth::check()) {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        if ($user->isOwner())  return redirect()->route('owner.pets');
+        if ($user->isOwner())  return redirect()->route('owner.welcome');
         if ($user->isClinic()) return redirect()->route('dashboard');
         if ($user->isAdmin())  return redirect()->route('user-management');
     }
@@ -60,6 +60,9 @@ Route::post('clinic/logout', [App\Http\Controllers\ClinicAuthController::class, 
 
 // Owner portal routes
 Route::middleware(['auth', 'role:owner', \App\Http\Middleware\EnsureEmailIsVerified::class])->prefix('owner')->group(function () {
+    Route::get('welcome', function () {
+        return Inertia::render('owner/welcome', ['ownerName' => Auth::user()->name,]);
+    })->name('owner.welcome');
     Route::get('pets', [App\Http\Controllers\OwnerPortalController::class, 'myPets'])->name('owner.pets');
     Route::get('settings', [App\Http\Controllers\OwnerPortalController::class, 'settings'])->name('owner.settings');
     Route::get('settings/appearance', [App\Http\Controllers\AppearanceSettingsController::class, 'ownerEdit'])->name('owner.settings.appearance');
@@ -135,4 +138,4 @@ Route::middleware(['auth', \App\Http\Middleware\EnsureEmailIsVerified::class])->
     });
 });
 
-require __DIR__.'/settings.php';
+require __DIR__ . '/settings.php';
