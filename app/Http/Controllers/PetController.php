@@ -7,10 +7,12 @@ use App\Models\Owner;
 use App\Models\PetSpecies;
 use App\Models\Consultation;
 use App\Models\ConsultationFile;
+use App\Models\ConsultationType;
 use App\Models\InventoryItem;
 use App\Http\Traits\ScopesToTenant;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -101,7 +103,7 @@ class PetController extends Controller
             'petName' => 'required|string|max:255',
             'species' => 'required|string',
             'breed' => 'nullable|string|max:255',
-            'age' => 'nullable|integer|min:0|max:50',
+            'age' => 'nullable|numeric|min:0|max:50',
             'weight' => 'nullable|numeric|min:0|max:500',
             'gender' => 'required|in:male,female',
             'color' => 'nullable|string|max:255',
@@ -112,7 +114,8 @@ class PetController extends Controller
             'petDocuments.*' => 'sometimes|nullable|file|mimes:jpeg,png,jpg,gif,webp,pdf,doc,docx|max:10240',
             'ownerName' => 'required|string|max:255',
             'phone' => 'required|digits_between:7,15',
-            'email' => 'nullable|email|max:255',
+            'email' => 'required|email|max:255',
+            'region' => 'string|max:255',
             'province' => 'required|string',
             'city' => 'required|string',
             'barangay' => 'required|string',
@@ -151,8 +154,8 @@ class PetController extends Controller
 
             $accountUser = $request->email
                 ? \App\Models\User::where('email', $request->email)
-                    ->where('role', \App\Models\User::ROLE_OWNER)
-                    ->first()
+                ->where('role', \App\Models\User::ROLE_OWNER)
+                ->first()
                 : null;
 
             $owner = Owner::create([
@@ -167,6 +170,7 @@ class PetController extends Controller
                 'province'        => $request->province,
                 'zip_code'        => $request->zipCode,
                 'address'         => implode(', ', array_filter([
+                    $request->region,
                     $request->street,
                     $request->barangay,
                     $request->city,
@@ -253,7 +257,7 @@ class PetController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'breed' => 'nullable|string|max:255',
-            'age' => 'nullable|integer|min:0|max:50',
+            'age' => 'nullable|numeric|min:0|max:50',
             'weight' => 'nullable|numeric|min:0|max:500',
             'color' => 'nullable|string|max:255',
             'microchipId' => 'nullable|string|max:255|unique:pets,microchip_id,' . $pet->id,
@@ -282,14 +286,15 @@ class PetController extends Controller
         $numericId = (int) str_replace('PET-', '', $petId);
 
         $pet = $this->scopePetToUser(Pet::with([
-                'owner',
-                'species',
-                'consultations.files',
-                'consultations.vaccinations',
-                'consultations.medications',
-                'vaccinations.consultation',
-                'medications.consultation',
-            ]))
+            'owner',
+            'species',
+            'consultations.files',
+            'consultations.vaccinations',
+            'consultations.medications',
+            'consultations.payment',
+            'vaccinations.consultation',
+            'medications.consultation',
+        ]))
             ->where('id', $numericId)
             ->firstOrFail();
 
@@ -299,26 +304,29 @@ class PetController extends Controller
                 'id' => $consultation->id,
                 'type' => $consultation->consultation_type,
                 'date' => $consultation->consultation_date->toISOString(),
+                'weight' => $consultation->weight,
                 'complaint' => $consultation->chief_complaint,
                 'diagnosis' => $consultation->diagnosis,
                 'treatment' => $consultation->treatment,
                 'notes' => $consultation->notes,
                 'veterinarian' => $consultation->veterinarian,
                 'paymentStatus' => $consultation->payment_status,
+                'paymentRecordedById' => $consultation->payment?->recorded_by,
+                'createdById' => $consultation->created_by,
                 'fee' => $consultation->consultation_fee,
-                    'linkedVaccinations' => $consultation->vaccinations->map(function ($vaccination) {
-                        return [
-                            'id' => $vaccination->id,
-                            'vaccine' => $vaccination->vaccine_name,
-                            'date' => $vaccination->vaccination_date->toISOString(),
-                        ];
-                    }),
-                    'linkedMedications' => $consultation->medications->map(function ($medication) {
-                        return [
-                            'id' => $medication->id,
-                            'name' => $medication->medication_name,
-                        ];
-                    }),
+                'linkedVaccinations' => $consultation->vaccinations->map(function ($vaccination) {
+                    return [
+                        'id' => $vaccination->id,
+                        'vaccine' => $vaccination->vaccine_name,
+                        'date' => $vaccination->vaccination_date->toISOString(),
+                    ];
+                }),
+                'linkedMedications' => $consultation->medications->map(function ($medication) {
+                    return [
+                        'id' => $medication->id,
+                        'name' => $medication->medication_name,
+                    ];
+                }),
                 'files' => $consultation->files->map(function ($file) {
                     return [
                         'id' => $file->id,
@@ -343,11 +351,11 @@ class PetController extends Controller
                 'paymentStatus' => $vaccination->payment_status,
                 'administeredBy' => $vaccination->administered_by,
                 'notes' => $vaccination->notes,
-                    'consultation' => $vaccination->consultation ? [
-                        'id' => $vaccination->consultation->id,
-                        'type' => $vaccination->consultation->consultation_type,
-                        'date' => $vaccination->consultation->consultation_date->toISOString(),
-                    ] : null,
+                'consultation' => $vaccination->consultation ? [
+                    'id' => $vaccination->consultation->id,
+                    'type' => $vaccination->consultation->consultation_type,
+                    'date' => $vaccination->consultation->consultation_date->toISOString(),
+                ] : null,
             ];
         });
 
@@ -362,11 +370,11 @@ class PetController extends Controller
                 'duration' => $medication->duration_days ? "{$medication->duration_days} days" : 'Ongoing',
                 'startDate' => $medication->start_date->toISOString(),
                 'endDate' => $medication->end_date ? $medication->end_date->toISOString() : null,
-                    'consultation' => $medication->consultation ? [
-                        'id' => $medication->consultation->id,
-                        'type' => $medication->consultation->consultation_type,
-                        'date' => $medication->consultation->consultation_date->toISOString(),
-                    ] : null,
+                'consultation' => $medication->consultation ? [
+                    'id' => $medication->consultation->id,
+                    'type' => $medication->consultation->consultation_type,
+                    'date' => $medication->consultation->consultation_date->toISOString(),
+                ] : null,
             ];
         });
 
@@ -400,6 +408,7 @@ class PetController extends Controller
             'lastVisit' => $pet->last_visit ? $pet->last_visit->toISOString() : $pet->created_at->toISOString(),
             'registrationDate' => $pet->created_at->toISOString(),
             'owner' => [
+                'userId' => $pet->owner->user_id,
                 'name' => $pet->owner->name,
                 'phone' => $pet->owner->phone,
                 'email' => $pet->owner->email ?? '',
@@ -411,17 +420,19 @@ class PetController extends Controller
                 'zipCode' => $pet->owner->zip_code ?? '',
                 'emergencyContact' => $pet->owner->emergency_contact ?? '',
             ],
+            'clinicIds' => $pet->clinic_ids ?? [],
             'medicalHistory' => $consultations,
             'vaccinations' => $vaccinations,
             'allergies' => [],
             'currentMedications' => $medications,
             'consultationOptions' => $consultationOptions,
+            'qrToken' => $pet->qr_token,
         ];
 
         $inventoryItems = $this->scopeToUser(InventoryItem::with('category'))
             ->orderBy('name')
             ->get()
-            ->map(fn ($item) => [
+            ->map(fn($item) => [
                 'id' => $item->id,
                 'code' => $item->item_code,
                 'name' => $item->name,
@@ -432,12 +443,24 @@ class PetController extends Controller
                 'unitPrice' => (float) $item->unit_price,
             ]);
 
-        $vaccineItems = $inventoryItems->filter(fn ($item) => in_array($item['categorySlug'], ['vaccines', 'vaccination']))->values();
+        $vaccineItems = $inventoryItems->filter(fn($item) => in_array($item['categorySlug'], ['vaccines', 'vaccination']))->values();
+
+        $consultationTypes = ConsultationType::where('user_id', Auth::id())
+            ->orderBy('name')
+            ->get()
+            ->map(fn($type) => [
+                'id' => $type->id,
+                'slug' => $type->slug,
+                'name' => $type->name,
+                'fee' => (float) $type->fee,
+                'description' => $type->description,
+            ]);
 
         return Inertia::render('pet-manage', [
             'pet' => $petData,
             'inventoryItems' => $inventoryItems,
             'vaccineItems' => $vaccineItems,
+            'consultationTypes' => $consultationTypes,
         ]);
     }
 

@@ -85,6 +85,11 @@ class OwnerPortalController extends Controller
             ->whereIn('owner_id', $owners)
             ->findOrFail($petId);
 
+        $firstClinicId = $pet->clinic_ids[0] ?? null;
+        $registeredClinicName = $firstClinicId
+            ? \App\Models\User::where('id', $firstClinicId)->value('clinic_name')
+            : null;
+
         $documents = $pet->consultations->flatMap(fn($c) => $c->files)->map(fn($f) => [
             'id'            => $f->id,
             'name'          => $f->original_name ?? $f->file_name,
@@ -96,7 +101,7 @@ class OwnerPortalController extends Controller
         ]);
 
         return response()->json([
-            'clinicName' => $user->clinic_name ?? $pet->owner?->clinic_name ?? 'SmartVet',
+            'clinicName' => $registeredClinicName ?? $user->clinic_name ?? $pet->owner?->clinic_name ?? 'SmartVet',
             'pet' => [
                 'id'          => $pet->id,
                 'name'        => $pet->name,
@@ -114,7 +119,7 @@ class OwnerPortalController extends Controller
                 'name'             => $pet->owner?->name,
                 'phone'            => $pet->owner?->phone,
                 'email'            => $pet->owner?->email,
-                'address'          => $pet->owner?->address,
+                'address'          => $pet->owner?->full_address,
                 'street'           => $pet->owner?->street,
                 'barangay'         => $pet->owner?->barangay,
                 'city'             => $pet->owner?->city,
@@ -132,6 +137,7 @@ class OwnerPortalController extends Controller
             'consultations' => $pet->consultations->map(fn($c) => [
                 'type'           => $c->consultation_type,
                 'date'           => $c->consultation_date->toDateString(),
+                'weight'         => $c->weight,
                 'complaint'      => $c->chief_complaint,
                 'diagnosis'      => $c->diagnosis,
                 'treatment'      => $c->treatment,
@@ -164,21 +170,35 @@ class OwnerPortalController extends Controller
         $pet = \App\Models\Pet::whereIn('owner_id', $ownerIds)->findOrFail($petId);
 
         $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'breed' => 'nullable|string|max:255',
+            'color' => 'nullable|string|max:255',
+            'age' => 'nullable|numeric|min:0',
+            'weight' => 'nullable|numeric|min:0',
+            'gender' => 'nullable|string|max:50',
+            'microchipId' => 'nullable|string|max:255',
             'petImage' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
         ]);
 
+        $pet->update([
+            'name' => $validated['name'],
+            'breed' => $validated['breed'] ?? null,
+            'color' => $validated['color'] ?? null,
+            'age' => $validated['age'] !== null ? $validated['age'] : null,
+            'weight' => $validated['weight'] !== null ? $validated['weight'] : null,
+            'gender' => $validated['gender'] ?? null,
+            'microchip_id' => $validated['microchipId'] ?? null,
+        ]);
+
         if ($request->hasFile('petImage')) {
-            // Delete old image
             if ($pet->image_path) {
                 Storage::disk('public')->delete($pet->image_path);
             }
 
             $newImagePath = $request->file('petImage')->store('pets', 'public');
             $pet->update(['image_path' => $newImagePath]);
-
-            return redirect()->route('owner.pets')->with('success', "{$pet->name}'s photo has been updated.");
         }
 
-        return redirect()->route('owner.pets')->with('info', 'No photo selected. Pet profile remains unchanged.');
+        return redirect()->route('owner.pets')->with('success', "{$pet->name}'s profile has been updated.");
     }
 }

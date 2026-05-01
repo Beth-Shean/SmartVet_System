@@ -16,6 +16,7 @@ class PetPayment extends Model
 
     protected $fillable = [
         'pet_id',
+        'customer_name',
         'consultation_id',
         'vaccination_id',
         'total_amount',
@@ -25,11 +26,17 @@ class PetPayment extends Model
         'paid_at',
         'recorded_by',
         'status',
+        'deduction_amount',
+        'deduction_reason',
+        'deduction_type',
+        'final_amount',
     ];
 
     protected $casts = [
         'paid_at' => 'datetime',
         'total_amount' => 'decimal:2',
+        'deduction_amount' => 'decimal:2',
+        'final_amount' => 'decimal:2',
     ];
 
     public function pet(): BelongsTo

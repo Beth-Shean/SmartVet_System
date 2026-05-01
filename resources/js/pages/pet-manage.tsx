@@ -68,6 +68,40 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+const getDateTimestamp = (date: string): number => {
+    const parsed = Date.parse(date);
+    return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+};
+
+function sortRecordsLatestFirst<T extends { date: string }>(records: T[]): T[] {
+    return [...records].sort((a, b) => getDateTimestamp(b.date) - getDateTimestamp(a.date));
+}
+
+const getConsultationRecordCreatorId = (record: any): number | undefined => {
+    if (record.createdById === undefined || record.createdById === null) {
+        return undefined;
+    }
+
+    const createdById = Number(record.createdById);
+    return Number.isNaN(createdById) ? undefined : createdById;
+};
+
+const canShowConsultationPaymentStatus = (record: any, currentClinicId?: number) => {
+    if (Number.isNaN(currentClinicId) || currentClinicId === undefined) {
+        return false;
+    }
+
+    const createdById = getConsultationRecordCreatorId(record);
+    if (createdById === undefined) {
+        return false;
+    }
+
+    // Only show payment status for consultations created by the current clinic
+    // Completely hide the field for external clinic records
+    const isExternalRecord = createdById !== currentClinicId;
+    return !isExternalRecord;
+};
+
 interface Pet {
     id: string;
     name: string;
@@ -83,7 +117,9 @@ interface Pet {
     status: string;
     lastVisit: string;
     registrationDate: string;
+    qrToken: string | null;
     owner: {
+        userId: number;
         name: string;
         phone: string;
         email: string;
@@ -95,6 +131,7 @@ interface Pet {
         zipCode: string;
         emergencyContact: string;
     };
+    clinicIds: number[];
     medicalHistory: any[];
     vaccinations: any[];
     allergies: string[];
@@ -123,10 +160,19 @@ interface InventoryLine {
     quantity: number;
 }
 
+interface ConsultationTypeOption {
+    id: number;
+    slug: string;
+    name: string;
+    fee: number;
+    description: string | null;
+}
+
 interface Props {
     pet: Pet;
     inventoryItems: InventoryItemOption[];
     vaccineItems: InventoryItemOption[];
+    consultationTypes: ConsultationTypeOption[];
 }
 
 const formatDate = (dateString: string) => {
@@ -165,8 +211,9 @@ const getStatusIcon = (status: string) => {
     }
 };
 
-export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) {
+export default function PetManage({ pet, inventoryItems, vaccineItems, consultationTypes }: Props) {
     const { auth } = usePage<SharedData>().props;
+    const currentClinicId = Number((auth.user as { id?: number | string })?.id);
     const themeColor = (auth.user as { theme_color?: string })?.theme_color || '#0f172a';
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isAddConsultationOpen, setIsAddConsultationOpen] = useState(false);
@@ -183,6 +230,12 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
         vaccination: { itemId: '', quantity: 1 },
     });
     const { success, error } = useToast();
+
+    const normalizedClinicIds = (pet.clinicIds || []).map((id) => Number(id)).filter((id) => !Number.isNaN(id));
+    const petBelongsToCurrentClinic = !Number.isNaN(currentClinicId) && (
+        Number(pet.owner.userId) === currentClinicId || normalizedClinicIds.includes(currentClinicId)
+    );
+    const sortedMedicalHistory = sortRecordsLatestFirst(pet.medicalHistory || []);
 
     const inventoryMap = useMemo(() => {
         const map = new Map<number, InventoryItemOption>();
@@ -203,6 +256,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
         // Consultation data
         consultationType: '',
         consultationFee: '',
+        consultationWeight: pet.weight?.toString() || '',
         chiefComplaint: '',
         diagnosis: '',
         treatment: '',
@@ -224,12 +278,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
         vaccinationReactions: '',
     });
 
-    const consultationTypes = [
-        { id: 'routine-checkup', name: 'General Check-up', price: 300, description: 'Regular visit' },
-        { id: 'emergency', name: 'Emergency', price: 800, description: 'Urgent care' },
-        { id: 'follow-up', name: 'Follow-up', price: 150, description: 'Review visit' },
-        { id: 'surgery', name: 'Surgery Evaluation', price: 500, description: 'Pre-op consult' },
-    ];
+    const availableConsultationTypes: ConsultationTypeOption[] = consultationTypes;
 
     const breadcrumbs: BreadcrumbItem[] = [
         {
@@ -273,11 +322,11 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
     };
 
     const handleConsultationTypeChange = (value: string) => {
-        const selectedType = consultationTypes.find(t => t.id === value);
+        const selectedType = availableConsultationTypes.find(t => t.slug === value);
         setData(data => ({
             ...data,
             consultationType: value,
-            consultationFee: selectedType ? selectedType.price.toString() : ''
+            consultationFee: selectedType ? selectedType.fee.toString() : ''
         }));
     };
 
@@ -439,6 +488,9 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
         if (!data.consultationDate) {
             newErrors.consultationDate = 'Please select a consultation date';
         }
+        if (!data.consultationWeight || parseFloat(data.consultationWeight) < 0.1) {
+            newErrors.consultationWeight = 'Weight must be at least 0.1 kg';
+        }
 
         if (Object.keys(newErrors).length > 0) {
             setConsultationErrors(newErrors);
@@ -459,6 +511,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
         formData.append('treatment', data.treatment || '');
         formData.append('notes', data.notes || '');
         formData.append('consultation_date', data.consultationDate);
+        formData.append('weight', data.consultationWeight);
         formData.append('consultation_fee', data.consultationFee || '0');
 
         data.consultationFiles.forEach((file, index) => {
@@ -495,7 +548,13 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                         } else {
                             msg = 'Invalid input.';
                         }
-                        return [key === 'consultation_type' ? 'consultationType' : key === 'chief_complaint' ? 'chiefComplaint' : key === 'consultation_date' ? 'consultationDate' : key, msg];
+                        const keyMap: Record<string, string> = {
+                            'consultation_type': 'consultationType',
+                            'chief_complaint': 'chiefComplaint',
+                            'consultation_date': 'consultationDate',
+                            'weight': 'consultationWeight',
+                        };
+                        return [keyMap[key] || key, msg];
                     })
                 );
 
@@ -669,7 +728,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
             description="Comprehensive pet health management and medical records."
         >
             <Head title={`${pet.name} - Pet Management`} />
-            <div className="h-[calc(100vh-12rem)] flex flex-col overflow-hidden">
+            <div className="space-y-4 pb-10">
 
             {/* Back Button */}
             <div className="mb-4 shrink-0">
@@ -942,9 +1001,9 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                                         <SelectValue placeholder="Select type" />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
-                                                                        {consultationTypes.map((type) => (
-                                                                            <SelectItem key={type.id} value={type.id}>
-                                                                                {type.name} - ₱{type.price}
+                                                                        {availableConsultationTypes.map((type) => (
+                                                                            <SelectItem key={type.id} value={type.slug}>
+                                                                                {type.name} - ₱{type.fee.toFixed(2)}
                                                                             </SelectItem>
                                                                         ))}
                                                                     </SelectContent>
@@ -958,6 +1017,19 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                                     value={data.consultationDate}
                                                                     onChange={(e) => setData('consultationDate', e.target.value)}
                                                                     className={consultationErrors.consultationDate ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
+                                                                    required
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <label className="text-sm font-medium">Weight (kg) *</label>
+                                                                <Input
+                                                                    name="consultationWeight"
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    min="0.1"
+                                                                    value={data.consultationWeight}
+                                                                    onChange={(e) => setData('consultationWeight', e.target.value)}
+                                                                    className={consultationErrors.weight ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
                                                                     required
                                                                 />
                                                             </div>
@@ -1007,7 +1079,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                             <div className="space-y-2">
                                                                 <label className="text-sm font-medium">Clinical Evaluation During Physical Examination</label>
                                                                 <Textarea
-                                                                    placeholder="Any additional observations or notes..."
+                                                                    placeholder="Professional observations during the physical examination (visible to veterinarian only)..."
                                                                     value={data.notes}
                                                                     onChange={(e) => setData('notes', e.target.value)}
                                                                     rows={2}
@@ -1184,7 +1256,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        pet.medicalHistory.map((record, index) => (
+                                        sortedMedicalHistory.map((record, index) => (
                                             <TableRow key={index}>
                                                 <TableCell>{formatDate(record.date)}</TableCell>
                                                 <TableCell className="capitalize">{record.type.replace('-', ' ')}</TableCell>
@@ -1193,14 +1265,18 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                     {record.diagnosis || '-'}
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline" className={cn(
-                                                        "capitalize",
-                                                        record.paymentStatus === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
-                                                        record.paymentStatus === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                                        "bg-neutral-50 text-neutral-700 border-neutral-200"
-                                                    )}>
-                                                        {record.paymentStatus}
-                                                    </Badge>
+                                                    {canShowConsultationPaymentStatus(record, currentClinicId) ? (
+                                                        <Badge variant="outline" className={cn(
+                                                            "capitalize",
+                                                            record.paymentStatus === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
+                                                            record.paymentStatus === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                                            "bg-neutral-50 text-neutral-700 border-neutral-200"
+                                                        )}>
+                                                            {record.paymentStatus}
+                                                        </Badge>
+                                                    ) : (
+                                                        '-'
+                                                    )}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <Button variant="ghost" size="sm" onClick={() => setSelectedConsultation(record)}>
@@ -1231,16 +1307,24 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                     <p className="text-sm">{selectedConsultation.veterinarian}</p>
                                                 </div>
                                                 <div>
+                                                    <span className="text-sm font-medium text-neutral-500">Weight</span>
+                                                    <p className="text-sm">{selectedConsultation.weight ? `${selectedConsultation.weight} kg` : '—'}</p>
+                                                </div>
+                                                <div>
                                                     <span className="text-sm font-medium text-neutral-500">Payment Status</span>
                                                     <div className="mt-1">
-                                                        <Badge variant="outline" className={cn(
-                                                            "capitalize",
-                                                            selectedConsultation.paymentStatus === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
-                                                            selectedConsultation.paymentStatus === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                                            "bg-neutral-50 text-neutral-700 border-neutral-200"
-                                                        )}>
-                                                            {selectedConsultation.paymentStatus}
-                                                        </Badge>
+                                                        {!pet.qrToken && canShowConsultationPaymentStatus(selectedConsultation, currentClinicId) ? (
+                                                            <Badge variant="outline" className={cn(
+                                                                "capitalize",
+                                                                selectedConsultation.paymentStatus === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
+                                                                selectedConsultation.paymentStatus === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                                                "bg-neutral-50 text-neutral-700 border-neutral-200"
+                                                            )}>
+                                                                {selectedConsultation.paymentStatus}
+                                                            </Badge>
+                                                        ) : (
+                                                            <span className="text-sm text-neutral-500">-</span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1532,10 +1616,12 @@ export default function PetManage({ pet, inventoryItems, vaccineItems }: Props) 
                                                 <TableCell>
                                                     <Badge variant="outline" className={vaccination.paymentStatus === 'paid'
                                                         ? 'border-transparent bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200'
-                                                        : 'border-transparent bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
+                                                        : vaccination.paymentStatus === 'pending'
+                                                            ? 'border-transparent bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
+                                                            : 'border-transparent bg-neutral-50 text-neutral-700 dark:border-neutral-400/30 dark:bg-neutral-500/10 dark:text-neutral-200'
                                                     }>
                                                         {vaccination.paymentStatus === 'paid' ? <CheckCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-                                                        <span className="ml-1 capitalize">{vaccination.paymentStatus}</span>
+                                                        <span className="ml-1 capitalize">{vaccination.paymentStatus || 'unknown'}</span>
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell className="text-right">

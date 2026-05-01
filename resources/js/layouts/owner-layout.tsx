@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { logout } from '@/routes';
+import { InactivityWarning } from '@/components/inactivity-warning';
+import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
 import { ChevronDown, Menu, PawPrint, Settings, LogOut } from 'lucide-react';
 import { type SharedData, type BreadcrumbItem } from '@/types';
 
@@ -40,6 +42,10 @@ export default function OwnerLayout({
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
 
+    // Initialize inactivity timeout hook
+    const { showWarning, timeoutSeconds, dismissWarning, logout: handleInactivityLogout } = useInactivityTimeout({ enabled: true });
+    const [countdownSeconds, setCountdownSeconds] = useState(timeoutSeconds);
+
     // Listen for theme color changes in localStorage and custom events
     useEffect(() => {
         const handleThemeChange = (event: Event) => {
@@ -50,9 +56,16 @@ export default function OwnerLayout({
         // Listen to custom theme change event
         window.addEventListener('themeChange', handleThemeChange);
 
-        // Also check localStorage on mount for theme color
+        // Also check localStorage and server theme color on mount and when props change
+        const serverThemeColor = ownerThemeColor || clinicSettings?.themeColor;
         const storedColor = localStorage.getItem('ownerThemeColor');
-        if (storedColor) {
+
+        if (serverThemeColor) {
+            if (storedColor !== serverThemeColor) {
+                localStorage.setItem('ownerThemeColor', serverThemeColor);
+            }
+            setThemeColor(serverThemeColor);
+        } else if (storedColor) {
             setThemeColor(storedColor);
         }
 
@@ -69,7 +82,25 @@ export default function OwnerLayout({
             window.removeEventListener('themeChange', handleThemeChange);
             window.removeEventListener('storage', handleStorageChange);
         };
-    }, []);
+    }, [ownerThemeColor, clinicSettings?.themeColor]);
+
+    // Countdown timer for warning dialog
+    useEffect(() => {
+        if (!showWarning) return;
+
+        setCountdownSeconds(timeoutSeconds);
+        const interval = setInterval(() => {
+            setCountdownSeconds((prev) => {
+                if (prev <= 1) {
+                    clearInterval(interval);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [showWarning, timeoutSeconds]);
 
     const navigation = [
         { name: 'My Pets', href: '/owner/pets', icon: PawPrint },
@@ -119,6 +150,13 @@ export default function OwnerLayout({
     return (
         <>
             <Head title={title} />
+
+            <InactivityWarning
+                open={showWarning}
+                timeoutSeconds={countdownSeconds}
+                onContinue={dismissWarning}
+                onLogout={handleInactivityLogout}
+            />
 
             <div
                 className="h-screen overflow-hidden bg-slate-50 flex flex-col"

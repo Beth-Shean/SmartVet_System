@@ -11,17 +11,17 @@ import {
 import { cn } from '@/lib/utils';
 import AdminLayout from '@/layouts/admin-layout';
 import { dashboard } from '@/routes';
-import { type BreadcrumbItem } from '@/types';
-import { Head } from '@inertiajs/react';
+import { type BreadcrumbItem, type SharedData } from '@/types';
+import { Head, router, usePage } from '@inertiajs/react';
 import {
     ArrowDownRight,
     ArrowUpRight,
     CreditCard,
     PawPrint,
-    PiggyBank,
     ShoppingBag,
-    Wallet,
+    Syringe,
 } from 'lucide-react';
+import OnboardingTour, { type OnboardingStep } from '@/components/onboarding-tour';
 import { type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 
@@ -58,28 +58,27 @@ interface ServiceHighlight {
 }
 
 interface Stats {
-    dailyGross: {
-        value: number;
-        change: number;
-        changeText: string;
-        trend: 'up' | 'down';
-        meta: string;
-    };
-    monthlyRevenue: {
-        value: number;
-        change: number;
-        changeText: string;
-        trend: 'up' | 'down';
-        meta: string;
-    };
-    pendingPayments: {
-        value: number;
-        count: number;
-        changeText: string;
-        trend: 'up' | 'down';
-        meta: string;
-    };
     patientsToday: {
+        value: number;
+        change: number;
+        changeText: string;
+        trend: 'up' | 'down';
+        meta: string;
+    };
+    presentMonthlyVaccinations: {
+        value: number;
+        change: number;
+        changeText: string;
+        trend: 'up' | 'down';
+        meta: string;
+    };
+    previousMonthlyVaccinations: {
+        value: number;
+        changeText: string;
+        trend: 'up' | 'down';
+        meta: string;
+    };
+    presentMonthlyConsultations: {
         value: number;
         change: number;
         changeText: string;
@@ -116,6 +115,8 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function Dashboard({ stats, recentTransactions, serviceHighlights }: DashboardProps) {
+    const { auth } = usePage<SharedData>().props;
+    const [showTour, setShowTour] = useState(!((auth.user as { onboarding_complete?: boolean })?.onboarding_complete));
     const [page, setPage] = useState(0);
     const pageSize = 3;
     const transactionCount = recentTransactions?.length || 0;
@@ -133,40 +134,40 @@ export default function Dashboard({ stats, recentTransactions, serviceHighlights
 
     const metricCards: MetricCard[] = [
         {
-            title: 'Daily Revenue',
-            value: formatPeso(stats?.dailyGross?.value || 0),
-            change: stats?.dailyGross?.changeText || 'No data',
-            trend: stats?.dailyGross?.trend || 'up',
-            meta: stats?.dailyGross?.meta || '0 invoices issued',
-            icon: Wallet,
-            accent: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200',
-        },
-        {
-            title: 'Monthly Revenue',
-            value: formatPeso(stats?.monthlyRevenue?.value || 0),
-            change: stats?.monthlyRevenue?.changeText || 'No data',
-            trend: stats?.monthlyRevenue?.trend || 'up',
-            meta: stats?.monthlyRevenue?.meta || 'This month total',
-            icon: CreditCard,
-            accent: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-200',
-        },
-        {
-            title: 'Pending Payments',
-            value: formatPeso(stats?.pendingPayments?.value || 0),
-            change: stats?.pendingPayments?.changeText || '0 pending',
-            trend: stats?.pendingPayments?.trend || 'down',
-            meta: stats?.pendingPayments?.meta || 'Awaiting payment',
-            icon: PiggyBank,
-            accent: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200',
-        },
-        {
             title: 'Patients Today',
             value: `${stats?.patientsToday?.value || 0} patients`,
             change: stats?.patientsToday?.changeText || 'No visits',
             trend: stats?.patientsToday?.trend || 'up',
-            meta: stats?.patientsToday?.meta || '0 total pets',
+            meta: stats?.patientsToday?.meta || 'Today consultation count',
             icon: PawPrint,
             accent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-200',
+        },
+        {
+            title: 'Present Monthly Vaccinations',
+            value: `${stats?.presentMonthlyVaccinations?.value || 0}`,
+            change: stats?.presentMonthlyVaccinations?.changeText || 'No data',
+            trend: stats?.presentMonthlyVaccinations?.trend || 'up',
+            meta: stats?.presentMonthlyVaccinations?.meta || 'This month vaccinations',
+            icon: Syringe,
+            accent: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-200',
+        },
+        {
+            title: 'Previous Monthly Vaccinations',
+            value: `${stats?.previousMonthlyVaccinations?.value || 0}`,
+            change: stats?.previousMonthlyVaccinations?.changeText || 'Last month total',
+            trend: stats?.previousMonthlyVaccinations?.trend || 'up',
+            meta: stats?.previousMonthlyVaccinations?.meta || 'Last month vaccinations',
+            icon: ShoppingBag,
+            accent: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200',
+        },
+        {
+            title: 'Present Monthly Consultations',
+            value: `${stats?.presentMonthlyConsultations?.value || 0}`,
+            change: stats?.presentMonthlyConsultations?.changeText || 'No data',
+            trend: stats?.presentMonthlyConsultations?.trend || 'up',
+            meta: stats?.presentMonthlyConsultations?.meta || 'This month consultations',
+            icon: CreditCard,
+            accent: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200',
         },
     ];
 
@@ -197,12 +198,60 @@ export default function Dashboard({ stats, recentTransactions, serviceHighlights
               .join(', ')
         : '#d4d4d8 0deg 360deg';
 
+    const clinicOnboardingSteps: OnboardingStep[] = [
+        {
+            title: 'Welcome to your clinic dashboard',
+            description: 'This walkthrough points you to the key pages and actions for running your clinic.',
+            bulletPoints: [
+                'View key clinic metrics like patients, consultations, vaccinations, and inventory status.',
+                'Open the side menu to navigate Pet Records, Inventory, Billing, Reports, and Clinic Settings.',
+            ],
+        },
+        {
+            title: 'Manage pets and consultations',
+            description: 'Use the Pet Records section to track every patient and see their health history.',
+            bulletPoints: [
+                'Register or update pets and link them to their owners.',
+                'Record consultations and vaccinations directly from the pet details page.',
+            ],
+        },
+        {
+            title: 'Configure services and inventory',
+            description: 'Keep your clinic services and stock information up to date.',
+            bulletPoints: [
+                'Create custom consultation types with fees in Consultation Types.',
+                'Track inventory levels, add new stock, and receive low-stock alerts in Inventory Management.',
+            ],
+        },
+        {
+            title: 'Process payments and analyze performance',
+            description: 'Use billing tools and reports to close the loop on clinic operations.',
+            bulletPoints: [
+                'Record payments, generate receipts, and apply deductions in the Billing page.',
+                'Use Reports to review service trends, revenue, and clinic performance over time.',
+            ],
+        },
+    ];
+
+    const handleCompleteTour = () => {
+        setShowTour(false);
+        router.post('/onboarding/complete', {}, { preserveState: true, preserveScroll: true });
+    };
+
     return (
         <AdminLayout
             breadcrumbs={breadcrumbs}
             title="Clinic Dashboard"
-            description="Revenue, patients, and service overview for SmartVet clinic."
+            description="Clinic activity overview for patients, vaccinations, and consultations."
         >
+            <OnboardingTour
+                open={showTour}
+                title="Clinic onboarding tour"
+                description="A quick step-by-step guide to your new clinic dashboard."
+                steps={clinicOnboardingSteps}
+                onComplete={handleCompleteTour}
+                onClose={() => setShowTour(false)}
+            />
             <Head title="Dashboard" />
             <div className="flex flex-col gap-3 h-full">
             <div className="grid gap-3 grid-cols-2 xl:grid-cols-4">

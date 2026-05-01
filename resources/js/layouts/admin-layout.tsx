@@ -14,6 +14,8 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { UserMenuContent } from '@/components/user-menu-content';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NotificationBell } from '@/components/notification-bell';
+import { InactivityWarning } from '@/components/inactivity-warning';
+import { useInactivityTimeout } from '@/hooks/useInactivityTimeout';
 import { dashboard } from '@/routes';
 import {
     Activity,
@@ -23,8 +25,12 @@ import {
     BarChart3,
     Boxes,
     Heart,
-    CreditCard,    PawPrint,    Settings,
-    QrCode
+    CreditCard,
+    Pill,
+    PawPrint,
+    Settings,
+    QrCode,
+    Syringe,
 } from 'lucide-react';
 import { type SharedData, type BreadcrumbItem } from '@/types';
 
@@ -51,7 +57,19 @@ export default function AdminLayout({
     const { auth } = usePage<SharedData>().props;
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [themeColor, setThemeColor] = useState((auth.user as { theme_color?: string })?.theme_color || '#0f172a');
+    const [countdownSeconds, setCountdownSeconds] = useState(30);
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+
+    const userRole = (auth.user as { role?: string })?.role;
+    const logoutUrl = userRole === 'admin' ? '/admin/logout' : '/clinic/logout';
+    const loginUrl = userRole === 'admin' ? '/admin' : '/clinic';
+
+    // Initialize inactivity timeout hook
+    const { showWarning, dismissWarning, logout } = useInactivityTimeout({
+        enabled: true,
+        logoutUrl,
+        loginUrl,
+    });
 
     // Listen for theme color changes
     useEffect(() => {
@@ -64,8 +82,15 @@ export default function AdminLayout({
         window.addEventListener('clinicThemeChange', handleThemeChange);
 
         // Also check localStorage on mount for theme color
+        const serverThemeColor = (auth.user as { theme_color?: string })?.theme_color;
         const storedColor = localStorage.getItem('clinicThemeColor');
-        if (storedColor) {
+
+        if (serverThemeColor) {
+            if (storedColor !== serverThemeColor) {
+                localStorage.setItem('clinicThemeColor', serverThemeColor);
+            }
+            setThemeColor(serverThemeColor);
+        } else if (storedColor) {
             setThemeColor(storedColor);
         }
 
@@ -83,6 +108,24 @@ export default function AdminLayout({
             window.removeEventListener('storage', handleStorageChange);
         };
     }, []);
+
+    // Countdown timer for warning dialog
+    useEffect(() => {
+        if (!showWarning) return;
+
+        setCountdownSeconds(30);
+        const interval = setInterval(() => {
+            setCountdownSeconds((prev) => {
+                if (prev <= 1) {
+                    clearInterval(interval);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [showWarning]);
 
     const isAdmin = (auth.user as { role?: string })?.role === 'admin';
     const clinicName = (auth.user as { clinic_name?: string })?.clinic_name || 'SmartVet';
@@ -114,6 +157,20 @@ export default function AdminLayout({
             name: 'Inventory Management',
             href: '/inventory-management',
             icon: Boxes,
+            adminOnly: false,
+            clinicOnly: true
+        },
+        {
+            name: 'Consultation Types',
+            href: '/consultation-types',
+            icon: Syringe,
+            adminOnly: false,
+            clinicOnly: true
+        },
+        {
+            name: 'Inventory Sales',
+            href: '/medication-sales',
+            icon: Pill,
             adminOnly: false,
             clinicOnly: true
         },
@@ -210,6 +267,13 @@ export default function AdminLayout({
     return (
         <>
             <Head title={title} />
+
+            <InactivityWarning
+                open={showWarning}
+                timeoutSeconds={countdownSeconds}
+                onContinue={dismissWarning}
+                onLogout={logout}
+            />
 
             <div
                 className="min-h-screen flex flex-col"

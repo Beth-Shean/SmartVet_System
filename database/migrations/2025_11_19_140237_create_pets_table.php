@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('owner_id')->constrained('owners')->onDelete('cascade');
             $table->foreignId('species_id')->constrained('pet_species');
             $table->string('breed')->nullable();
-            $table->integer('age')->nullable();
+            $table->decimal('age', 5, 2)->nullable();
             $table->decimal('weight', 5, 2)->nullable();
             $table->enum('gender', ['male', 'female']);
             $table->string('color')->nullable();
@@ -25,7 +25,7 @@ return new class extends Migration
             $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamp('last_visit')->nullable();
             $table->timestamps();
-            
+
             $table->index(['name', 'owner_id']);
             $table->index(['species_id', 'status']);
         });

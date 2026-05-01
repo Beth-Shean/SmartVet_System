@@ -4,7 +4,9 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import OwnerLayout from '@/layouts/owner-layout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
+import OnboardingTour, { type OnboardingStep } from '@/components/onboarding-tour';
+import { type SharedData } from '@/types';
 import {
     CalendarDays,
     Ruler,
@@ -47,6 +49,7 @@ interface Vaccination {
     vaccine: string;
     date: string;
     nextDue: string;
+    clinicName?: string | null;
 }
 
 interface ConsultationFile {
@@ -70,9 +73,11 @@ interface Consultation {
     clinicName: string | null;
     type: string;
     date: string;
+    weight?: number | null;
     complaint: string;
     diagnosis: string;
     treatment?: string;
+    
     inventoryItems?: ConsultationInventoryItem[];
     files?: ConsultationFile[];
 }
@@ -89,6 +94,18 @@ interface OwnerInfo {
     zipCode?: string;
     emergencyContact?: string;
 }
+
+const getOwnerAddress = (owner: OwnerInfo | null): string => {
+    if (!owner) {
+        return '';
+    }
+
+    const structuredAddress = [owner.street, owner.barangay, owner.city, owner.province, owner.zipCode]
+        .filter(Boolean)
+        .join(', ');
+
+    return structuredAddress || owner.address || '';
+};
 
 interface DocumentFile {
     id: number;
@@ -211,7 +228,49 @@ function PetCard({ pet, onShowQr, onShowRecord, onEdit }: { pet: Pet; onShowQr: 
 }
 
 export default function MyPets({ pets }: MyPetsProps) {
+    const { auth } = usePage<SharedData>().props;
+    const [showTour, setShowTour] = useState(!((auth.user as { onboarding_complete?: boolean })?.onboarding_complete));
     const hasPets = pets.length > 0;
+
+    const ownerOnboardingSteps: OnboardingStep[] = [
+        {
+            title: 'Welcome to your pet portal',
+            description: 'This tour helps you find every pet record and keep your clinic informed.',
+            bulletPoints: [
+                'View all your registered pets in one place.',
+                'Open a pet’s record to see details, consultations, and vaccination history.',
+            ],
+        },
+        {
+            title: 'Access pet health records',
+            description: 'The pet record lets you review consultations, vaccinations, and shared documents.',
+            bulletPoints: [
+                'See consultation notes, treatment plans, and medical files for each visit.',
+                'Check vaccination dates and next due reminders from your clinic.',
+            ],
+        },
+        {
+            title: 'Use QR codes for faster visits',
+            description: 'QR codes help your clinic quickly access your pet’s profile during appointments.',
+            bulletPoints: [
+                'Generate a pet QR code from the pet card.',
+                'Share the QR code at the clinic for faster check-in and record retrieval.',
+            ],
+        },
+        {
+            title: 'Keep your pet info up to date',
+            description: 'Accurate pet details make each visit smoother and safer.',
+            bulletPoints: [
+                'You can update your pet’s profile photo only.',
+                'For changes in breed, weight, gender, color, or microchip ID, please contact your clinic.',
+            ],
+        },
+    ];
+
+    const handleCompleteTour = () => {
+        setShowTour(false);
+        router.post('/onboarding/complete', {}, { preserveState: true, preserveScroll: true });
+    };
 
     // QR modal
     const [qrPet, setQrPet] = useState<Pet | null>(null);
@@ -226,17 +285,20 @@ export default function MyPets({ pets }: MyPetsProps) {
     const [recordPet, setRecordPet] = useState<Pet | null>(null);
     const [recordPetDetails, setRecordPetDetails] = useState<Partial<Pet> | null>(null);
     const [recordOwner, setRecordOwner] = useState<OwnerInfo | null>(null);
+    const [recordClinicName, setRecordClinicName] = useState<string | null>(null);
     const [recordDocuments, setRecordDocuments] = useState<DocumentFile[]>([]);
     const [vaccinations, setVaccinations] = useState<Vaccination[]>([]);
     const [consultations, setConsultations] = useState<Consultation[]>([]);
     const [recordLoading, setRecordLoading] = useState(false);
     const sortedVaccinations = sortRecordsLatestFirst(vaccinations);
     const sortedConsultations = sortRecordsLatestFirst(consultations);
+    const recordOwnerAddress = getOwnerAddress(recordOwner);
 
     const closeRecordModal = () => {
         setRecordPet(null);
         setRecordPetDetails(null);
         setRecordOwner(null);
+        setRecordClinicName(null);
         setRecordDocuments([]);
         setVaccinations([]);
         setConsultations([]);
@@ -256,6 +318,7 @@ export default function MyPets({ pets }: MyPetsProps) {
             const data = await res.json();
             setRecordPetDetails(data.pet ?? null);
             setRecordOwner(data.owner ?? null);
+            setRecordClinicName(data.clinicName ?? null);
             setRecordDocuments(data.documents ?? []);
             setVaccinations(data.vaccinations ?? []);
             setConsultations(data.consultations ?? []);
@@ -266,18 +329,42 @@ export default function MyPets({ pets }: MyPetsProps) {
 
     // Edit modal
     const [editPet, setEditPet] = useState<Pet | null>(null);
-    const { setData, post, processing, errors, reset, clearErrors } = useForm({
-        petImage: null as File | null,
+    const { data, setData, post, processing, errors, reset, clearErrors } = useForm<{
+        petImage: File | null;
+        _method: string;
+        name: string;
+        breed: string;
+        color: string;
+        age: string;
+        weight: string;
+        gender: string;
+        microchipId: string;
+    }>({
+        petImage: null,
         _method: 'PUT',
+        name: '',
+        breed: '',
+        color: '',
+        age: '',
+        weight: '',
+        gender: '',
+        microchipId: '',
     });
 
     const openEdit = (pet: Pet) => {
         setEditPet(pet);
-        reset();
         clearErrors();
+        reset();
         setData({
             petImage: null,
             _method: 'PUT',
+            name: pet.name,
+            breed: pet.breed ?? '',
+            color: pet.color ?? '',
+            age: pet.age != null ? String(pet.age) : '',
+            weight: pet.weight != null ? String(pet.weight) : '',
+            gender: pet.gender ?? '',
+            microchipId: pet.microchipId ?? '',
         });
     };
 
@@ -296,6 +383,14 @@ export default function MyPets({ pets }: MyPetsProps) {
             description="View your registered pets and their health records."
         >
             <Head title="My Pets" />
+            <OnboardingTour
+                open={showTour}
+                title="Owner onboarding tour"
+                description="Step through the key actions for managing your pets and health records."
+                steps={ownerOnboardingSteps}
+                onComplete={handleCompleteTour}
+                onClose={() => setShowTour(false)}
+            />
 
             {!hasPets && (
                 <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
@@ -353,6 +448,11 @@ export default function MyPets({ pets }: MyPetsProps) {
                             <div>
                                 <p className="text-lg font-semibold text-neutral-900">{recordPet.name}'s Record</p>
                                 <p className="text-sm text-neutral-500">{recordPet.species} · {recordPet.breed}</p>
+                                {recordClinicName && (
+                                    <p className="text-sm text-neutral-500 mt-1">
+                                        <span className="font-medium">Registered at:</span> {recordClinicName}
+                                    </p>
+                                )}
                             </div>
                             <button onClick={closeRecordModal} className="rounded-full p-1 text-neutral-400 hover:text-neutral-700">
                                 <X className="h-5 w-5" />
@@ -418,9 +518,9 @@ export default function MyPets({ pets }: MyPetsProps) {
                                                     {recordOwner.email}
                                                 </p>
                                             )}
-                                            {(recordOwner?.street || recordOwner?.barangay || recordOwner?.city || recordOwner?.province || recordOwner?.zipCode) && (
+                                            {recordOwnerAddress && (
                                                 <p className="text-xs text-neutral-500 mt-1">
-                                                    {[recordOwner.street, recordOwner.barangay, recordOwner.city, recordOwner.province, recordOwner.zipCode].filter(Boolean).join(', ')}
+                                                    {recordOwnerAddress}
                                                 </p>
                                             )}
                                             {recordOwner?.emergencyContact && (
@@ -480,6 +580,9 @@ export default function MyPets({ pets }: MyPetsProps) {
                                                             <div className="rounded-lg border border-neutral-100 bg-neutral-50 px-3 py-2.5">
                                                                 <p className="text-sm font-medium text-neutral-800">{v.vaccine}</p>
                                                                 <p className="text-xs text-neutral-500 mt-0.5">Given: {v.date} · Next due: {v.nextDue}</p>
+                                                                {v.clinicName && (
+                                                                    <p className="text-xs text-neutral-500 mt-1">Clinic: {v.clinicName}</p>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     );
@@ -519,6 +622,7 @@ export default function MyPets({ pets }: MyPetsProps) {
                                                                     <span className="text-xs text-neutral-400">{c.date}</span>
                                                                 </div>
                                                                 {c.clinicName && <p className="text-xs text-neutral-500"><span className="font-medium">Clinic:</span> {c.clinicName}</p>}
+                                                                {c.weight != null && <p className="text-xs text-neutral-500"><span className="font-medium">Weight:</span> {c.weight} kg</p>}
                                                                 {c.complaint && <p className="text-xs text-neutral-600 mt-1"><span className="font-medium">Complaint:</span> {c.complaint}</p>}
                                                                 {c.diagnosis && <p className="text-xs text-neutral-600"><span className="font-medium">Diagnosis:</span> {c.diagnosis}</p>}
 
@@ -552,53 +656,109 @@ export default function MyPets({ pets }: MyPetsProps) {
                     </div>
                 </div>
             )}
+
             {/* Edit Pet Modal */}
             {editPet && (
                 <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4" onClick={() => setEditPet(null)}>
-                    <div className="mx-auto mt-4 w-full max-w-md rounded-2xl bg-white shadow-2xl max-h-[90vh] min-h-[48vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div
+                        className="mx-auto mt-4 w-full max-w-md rounded-2xl bg-white shadow-2xl max-h-[90vh] min-h-[48vh] flex flex-col overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <div className="flex items-center justify-between border-b px-5 py-4">
                             <div>
                                 <p className="text-lg font-semibold text-neutral-900">Edit {editPet.name}</p>
-                                <p className="text-sm text-neutral-500">Update your pet's basic information</p>
+                                <p className="text-sm text-neutral-500">You can only update your pet's photo.</p>
                             </div>
                             <button onClick={() => setEditPet(null)} className="rounded-full p-1 text-neutral-400 hover:text-neutral-700">
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
+
                         <form onSubmit={handleEditSubmit} className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="col-span-1 sm:col-span-2 space-y-1">
-                                    <Label>Pet Name</Label>
-                                    <Input value={editPet?.name ?? ''} disabled />
+                                    <Label htmlFor="pet-name">Pet Name</Label>
+                                    <Input
+                                        id="pet-name"
+                                        value={data.name || 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="col-span-1 sm:col-span-2 space-y-1">
                                     <Label>Species</Label>
-                                    <Input value={editPet?.species ?? ''} disabled />
+                                    <Input
+                                        value={editPet?.species ?? 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="space-y-1">
-                                    <Label>Breed</Label>
-                                    <Input value={editPet?.breed ?? ''} disabled />
+                                    <Label htmlFor="pet-breed">Breed</Label>
+                                    <Input
+                                        id="pet-breed"
+                                        value={data.breed || 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="space-y-1">
-                                    <Label>Color</Label>
-                                    <Input value={editPet?.color ?? ''} disabled />
+                                    <Label htmlFor="pet-color">Color</Label>
+                                    <Input
+                                        id="pet-color"
+                                        value={data.color || 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="space-y-1">
-                                    <Label>Age (years)</Label>
-                                    <Input value={editPet?.age ?? ''} disabled />
+                                    <Label htmlFor="pet-age">Age (years)</Label>
+                                    <Input
+                                        id="pet-age"
+                                        type="number"
+                                        min="0"
+                                        step="any"
+                                        value={data.age}
+                                        onChange={(e) => setData('age', e.target.value)}
+                                        disabled={processing}
+                                    />
+                                    {errors.age && <p className="text-xs text-red-500">{errors.age}</p>}
                                 </div>
+
                                 <div className="space-y-1">
-                                    <Label>Weight (kg)</Label>
-                                    <Input value={editPet?.weight ?? ''} disabled />
+                                    <Label htmlFor="pet-weight">Weight (kg)</Label>
+                                    <Input
+                                        id="pet-weight"
+                                        value={data.weight ? `${data.weight} kg` : 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="space-y-1">
-                                    <Label>Gender</Label>
-                                    <Input value={editPet?.gender ?? ''} disabled />
+                                    <Label htmlFor="pet-gender">Gender</Label>
+                                    <Input
+                                        id="pet-gender"
+                                        value={data.gender || 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="space-y-1">
-                                    <Label>Microchip ID</Label>
-                                    <Input value={editPet?.microchipId ?? ''} disabled />
+                                    <Label htmlFor="pet-microchip">Microchip ID</Label>
+                                    <Input
+                                        id="pet-microchip"
+                                        value={data.microchipId || 'Not set'}
+                                        disabled
+                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                    />
                                 </div>
+
                                 <div className="col-span-2 space-y-1">
                                     <Label htmlFor="edit-photo">Photo</Label>
                                     <Input
@@ -612,6 +772,7 @@ export default function MyPets({ pets }: MyPetsProps) {
                                     {errors.petImage && <p className="text-xs text-red-500">{errors.petImage}</p>}
                                 </div>
                             </div>
+
                             <div className="flex gap-3 pt-2 pb-1">
                                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditPet(null)} disabled={processing}>
                                     Cancel

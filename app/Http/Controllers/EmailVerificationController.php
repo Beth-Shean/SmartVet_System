@@ -40,7 +40,7 @@ class EmailVerificationController extends Controller
             if ($user->isAdmin()) {
                 return redirect()->route('user-management');
             }
-            return redirect()->route('owner.welcome');
+            return redirect()->route('owner.pets');
         }
 
         if (! $user->email_verification_code || $user->email_verification_expires_at === null || $user->email_verification_expires_at->isPast()) {
@@ -65,7 +65,7 @@ class EmailVerificationController extends Controller
             return redirect()->route('user-management')->with('status', 'Email verified successfully.');
         }
 
-        return redirect()->route('owner.welcome')->with('status', 'Email verified successfully.');
+        return redirect()->route('owner.pets')->with('status', 'Email verified successfully.');
     }
 
     public function resend(Request $request)
@@ -83,7 +83,7 @@ class EmailVerificationController extends Controller
             if ($user->isAdmin()) {
                 return redirect()->route('user-management');
             }
-            return redirect()->route('owner.welcome');
+            return redirect()->route('owner.pets');
         }
 
         $verificationCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);

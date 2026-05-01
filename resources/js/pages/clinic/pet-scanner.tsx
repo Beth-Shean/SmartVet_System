@@ -86,6 +86,7 @@ interface PetResult {
         clinicName: string | undefined;
         type: string;
         date: string;
+        weight?: number | null;
         complaint: string | null;
         diagnosis: string | null;
         treatment?: string | null;
@@ -406,8 +407,11 @@ export default function PetScanner() {
                     <p className="text-xs text-slate-400">
                         Enter the pet's token.
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
+                        <label className="sr-only" htmlFor="manualToken">Pet token</label>
                         <Input
+                            id="manualToken"
+                            name="manualToken"
                             placeholder="Paste token…"
                             value={manualToken}
                             onChange={(e) => setManualToken(e.target.value)}
@@ -636,6 +640,7 @@ export default function PetScanner() {
                                                             </div>
                                                             <p className="text-xs text-slate-500 mt-0.5"><span className="font-medium">Clinic:</span> {c.clinicName ?? result.clinicName ?? 'SmartVet'}</p>
                                                             {c.complaint && <p className="text-xs text-slate-500 mt-0.5"><span className="font-medium">Complaint:</span> {c.complaint}</p>}
+                                                            {c.weight != null && <p className="text-xs text-slate-500"><span className="font-medium">Weight:</span> {c.weight} kg</p>}
                                                             {c.diagnosis && <p className="text-xs text-slate-500"><span className="font-medium">Diagnosis:</span> {c.diagnosis}</p>}
                                                             {c.treatment && <p className="text-xs text-slate-500"><span className="font-medium">Treatment:</span> {c.treatment}</p>}
 
