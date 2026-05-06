@@ -1390,9 +1390,7 @@ export default function PetRecords({ pets, species, newPetQr }: Props) {
                             </h3>
                         </div>
                         <div>
-                            <h3 className="font-semibold text-sm text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
-                                Health Status
-                            </h3>
+
                         </div>
                         <div>
                             <h3 className="font-semibold text-sm text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
