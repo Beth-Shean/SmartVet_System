@@ -40,7 +40,7 @@ class OwnerPortalController extends Controller
             });
         })->values()->all();
 
-        $speciesList = \App\Models\PetSpecies::orderBy('name')->get()->map(fn($s) => [
+        $speciesList = \App\Models\PetSpecies::orderBy('name')->get()->map(fn ($s) => [
             'id'   => $s->id,
             'name' => $s->name,
             'icon' => $s->icon,
@@ -80,17 +80,17 @@ class OwnerPortalController extends Controller
 
         $clinicName = $user->clinic_name ?? $ownerClinicName ?? 'SmartVet';
 
-        $owners = \App\Models\Owner::where('account_user_id', $user->id)->pluck('id');
+        $owners = \App\Models\Owner::where('account_user_id', $user->id)->pluck('owner_id');
         $pet = \App\Models\Pet::with(['owner', 'vaccinations', 'consultations.files', 'consultations.inventoryUsages.inventoryItem'])
             ->whereIn('owner_id', $owners)
             ->findOrFail($petId);
 
         $firstClinicId = $pet->clinic_ids[0] ?? null;
         $registeredClinicName = $firstClinicId
-            ? \App\Models\User::where('id', $firstClinicId)->value('clinic_name')
+            ? \App\Models\User::where('user_id', $firstClinicId)->value('clinic_name')
             : null;
 
-        $documents = $pet->consultations->flatMap(fn($c) => $c->files)->map(fn($f) => [
+        $documents = $pet->consultations->flatMap(fn ($c) => $c->files)->map(fn ($f) => [
             'id'            => $f->id,
             'name'          => $f->original_name ?? $f->file_name,
             'url'           => $f->file_url,
@@ -128,27 +128,28 @@ class OwnerPortalController extends Controller
                 'emergencyContact' => $pet->owner?->emergency_contact,
             ],
             'documents' => $documents,
-            'vaccinations' => $pet->vaccinations->map(fn($v) => [
+            'vaccinations' => $pet->vaccinations->map(fn ($v) => [
                 'vaccine' => $v->vaccine_name,
                 'date'    => $v->vaccination_date->toDateString(),
                 'nextDue' => $v->next_due_date->toDateString(),
                 'clinicName' => $v->clinic_location ?? $clinicName,
             ]),
-            'consultations' => $pet->consultations->map(fn($c) => [
+            'consultations' => $pet->consultations->map(fn ($c) => [
                 'type'           => $c->consultation_type,
                 'date'           => $c->consultation_date->toDateString(),
                 'weight'         => $c->weight,
                 'complaint'      => $c->chief_complaint,
                 'diagnosis'      => $c->diagnosis,
                 'treatment'      => $c->treatment,
+                'notes'          => $c->notes,
                 'clinicName' => $c->clinic_location ?? $clinicName,
-                'inventoryItems' => $c->inventoryUsages->map(fn($u) => [
+                'inventoryItems' => $c->inventoryUsages->map(fn ($u) => [
                     'id'        => $u->id,
                     'name'      => $u->inventoryItem?->name ?? 'Item',
                     'quantity'  => $u->quantity,
                     'unitPrice' => $u->unit_price,
                 ]),
-                'files'          => $c->files->map(fn($f) => [
+                'files'          => $c->files->map(fn ($f) => [
                     'id'            => $f->id,
                     'name'          => $f->original_name ?? $f->file_name,
                     'url'           => $f->file_url,
@@ -166,7 +167,7 @@ class OwnerPortalController extends Controller
         /** @var \App\Models\User $user */
         $user = $request->user();
 
-        $ownerIds = \App\Models\Owner::where('account_user_id', $user->id)->pluck('id');
+        $ownerIds = \App\Models\Owner::where('account_user_id', $user->id)->pluck('owner_id');
         $pet = \App\Models\Pet::whereIn('owner_id', $ownerIds)->findOrFail($petId);
 
         $validated = $request->validate([

@@ -22,10 +22,10 @@ class NotificationController extends Controller
         // Get dismissed notification keys for this user
         $dismissed = DismissedNotification::where('user_id', $userId)
             ->get()
-            ->map(fn ($d) => $d->inventory_item_id . ':' . $d->notification_type)
+            ->map(fn($d) => $d->inventory_item_id . ':' . $d->notification_type)
             ->toArray();
 
-        $isDismissed = fn ($itemId, $type) => in_array($itemId . ':' . $type, $dismissed);
+        $isDismissed = fn($itemId, $type) => in_array($itemId . ':' . $type, $dismissed);
 
         // Expired items
         $expired = $this->scopeToUser(InventoryItem::with('category')
@@ -33,7 +33,7 @@ class NotificationController extends Controller
             ->where('expiry_date', '<', $today))
             ->orderBy('expiry_date')
             ->get()
-            ->map(fn ($item) => [
+            ->map(fn($item) => [
                 'id' => $item->id,
                 'type' => 'expired',
                 'name' => $item->name,
@@ -53,7 +53,7 @@ class NotificationController extends Controller
             ->where('expiry_date', '<=', $thirtyDaysFromNow))
             ->orderBy('expiry_date')
             ->get()
-            ->map(fn ($item) => [
+            ->map(fn($item) => [
                 'id' => $item->id,
                 'type' => 'expiring_soon',
                 'name' => $item->name,
@@ -71,7 +71,7 @@ class NotificationController extends Controller
             ->where('current_stock', 0))
             ->orderBy('name')
             ->get()
-            ->map(fn ($item) => [
+            ->map(fn($item) => [
                 'id' => $item->id,
                 'type' => 'out_of_stock',
                 'name' => $item->name,
@@ -90,7 +90,7 @@ class NotificationController extends Controller
             ->whereColumn('current_stock', '<=', 'min_stock'))
             ->orderByRaw('current_stock / min_stock ASC')
             ->get()
-            ->map(fn ($item) => [
+            ->map(fn($item) => [
                 'id' => $item->id,
                 'type' => 'low_stock',
                 'name' => $item->name,
@@ -121,7 +121,7 @@ class NotificationController extends Controller
     public function dismiss(Request $request): JsonResponse
     {
         $request->validate([
-            'inventory_item_id' => 'required|integer|exists:inventory_items,id',
+            'inventory_item_id' => 'required|integer|exists:inventory_items,inventory_item_id',
             'notification_type' => 'required|string|in:expired,expiring_soon,out_of_stock,low_stock',
         ]);
 
@@ -149,22 +149,22 @@ class NotificationController extends Controller
         $this->scopeToUser(InventoryItem::whereNotNull('expiry_date')
             ->where('expiry_date', '<', $today))
             ->get()
-            ->each(fn ($item) => $notifications->push(['id' => $item->id, 'type' => 'expired']));
+            ->each(fn($item) => $notifications->push(['id' => $item->id, 'type' => 'expired']));
 
         $this->scopeToUser(InventoryItem::whereNotNull('expiry_date')
             ->where('expiry_date', '>=', $today)
             ->where('expiry_date', '<=', $thirtyDaysFromNow))
             ->get()
-            ->each(fn ($item) => $notifications->push(['id' => $item->id, 'type' => 'expiring_soon']));
+            ->each(fn($item) => $notifications->push(['id' => $item->id, 'type' => 'expiring_soon']));
 
         $this->scopeToUser(InventoryItem::where('current_stock', 0))
             ->get()
-            ->each(fn ($item) => $notifications->push(['id' => $item->id, 'type' => 'out_of_stock']));
+            ->each(fn($item) => $notifications->push(['id' => $item->id, 'type' => 'out_of_stock']));
 
         $this->scopeToUser(InventoryItem::where('current_stock', '>', 0)
             ->whereColumn('current_stock', '<=', 'min_stock'))
             ->get()
-            ->each(fn ($item) => $notifications->push(['id' => $item->id, 'type' => 'low_stock']));
+            ->each(fn($item) => $notifications->push(['id' => $item->id, 'type' => 'low_stock']));
 
         foreach ($notifications as $notification) {
             DismissedNotification::updateOrCreate(
