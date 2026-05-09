@@ -154,8 +154,8 @@ class PetController extends Controller
 
             $accountUser = $request->email
                 ? \App\Models\User::where('email', $request->email)
-                ->where('role', \App\Models\User::ROLE_OWNER)
-                ->first()
+                    ->where('role', \App\Models\User::ROLE_OWNER)
+                    ->first()
                 : null;
 
             $owner = Owner::create([
@@ -183,7 +183,7 @@ class PetController extends Controller
             $pet = Pet::create([
                 'name' => $request->petName,
                 'owner_id' => $owner->id,
-                'species_id' => $species->id,
+                'pet_species_id' => $species->id,
                 'breed' => $request->breed,
                 'age' => $request->age,
                 'weight' => $request->weight,
@@ -286,15 +286,15 @@ class PetController extends Controller
         $numericId = (int) str_replace('PET-', '', $petId);
 
         $pet = $this->scopePetToUser(Pet::with([
-            'owner',
-            'species',
-            'consultations.files',
-            'consultations.vaccinations',
-            'consultations.medications',
-            'consultations.payment',
-            'vaccinations.consultation',
-            'medications.consultation',
-        ]))
+                'owner',
+                'species',
+                'consultations.files',
+                'consultations.vaccinations',
+                'consultations.medications',
+                'consultations.payment',
+                'vaccinations.consultation',
+                'medications.consultation',
+            ]))
             ->where('pet_id', $numericId)
             ->firstOrFail();
 
@@ -314,19 +314,19 @@ class PetController extends Controller
                 'paymentRecordedById' => $consultation->payment?->recorded_by,
                 'createdById' => $consultation->created_by,
                 'fee' => $consultation->consultation_fee,
-                'linkedVaccinations' => $consultation->vaccinations->map(function ($vaccination) {
-                    return [
-                        'id' => $vaccination->id,
-                        'vaccine' => $vaccination->vaccine_name,
-                        'date' => $vaccination->vaccination_date->toISOString(),
-                    ];
-                }),
-                'linkedMedications' => $consultation->medications->map(function ($medication) {
-                    return [
-                        'id' => $medication->id,
-                        'name' => $medication->medication_name,
-                    ];
-                }),
+                    'linkedVaccinations' => $consultation->vaccinations->map(function ($vaccination) {
+                        return [
+                            'id' => $vaccination->id,
+                            'vaccine' => $vaccination->vaccine_name,
+                            'date' => $vaccination->vaccination_date->toISOString(),
+                        ];
+                    }),
+                    'linkedMedications' => $consultation->medications->map(function ($medication) {
+                        return [
+                            'id' => $medication->id,
+                            'name' => $medication->medication_name,
+                        ];
+                    }),
                 'files' => $consultation->files->map(function ($file) {
                     return [
                         'id' => $file->id,
@@ -351,11 +351,11 @@ class PetController extends Controller
                 'paymentStatus' => $vaccination->payment_status,
                 'administeredBy' => $vaccination->administered_by,
                 'notes' => $vaccination->notes,
-                'consultation' => $vaccination->consultation ? [
-                    'id' => $vaccination->consultation->id,
-                    'type' => $vaccination->consultation->consultation_type,
-                    'date' => $vaccination->consultation->consultation_date->toISOString(),
-                ] : null,
+                    'consultation' => $vaccination->consultation ? [
+                        'id' => $vaccination->consultation->id,
+                        'type' => $vaccination->consultation->consultation_type,
+                        'date' => $vaccination->consultation->consultation_date->toISOString(),
+                    ] : null,
             ];
         });
 
@@ -370,11 +370,11 @@ class PetController extends Controller
                 'duration' => $medication->duration_days ? "{$medication->duration_days} days" : 'Ongoing',
                 'startDate' => $medication->start_date->toISOString(),
                 'endDate' => $medication->end_date ? $medication->end_date->toISOString() : null,
-                'consultation' => $medication->consultation ? [
-                    'id' => $medication->consultation->id,
-                    'type' => $medication->consultation->consultation_type,
-                    'date' => $medication->consultation->consultation_date->toISOString(),
-                ] : null,
+                    'consultation' => $medication->consultation ? [
+                        'id' => $medication->consultation->id,
+                        'type' => $medication->consultation->consultation_type,
+                        'date' => $medication->consultation->consultation_date->toISOString(),
+                    ] : null,
             ];
         });
 
@@ -432,7 +432,7 @@ class PetController extends Controller
         $inventoryItems = $this->scopeToUser(InventoryItem::with('category'))
             ->orderBy('name')
             ->get()
-            ->map(fn($item) => [
+            ->map(fn ($item) => [
                 'id' => $item->id,
                 'code' => $item->item_code,
                 'name' => $item->name,
@@ -443,12 +443,12 @@ class PetController extends Controller
                 'unitPrice' => (float) $item->unit_price,
             ]);
 
-        $vaccineItems = $inventoryItems->filter(fn($item) => in_array($item['categorySlug'], ['vaccines', 'vaccination']))->values();
+        $vaccineItems = $inventoryItems->filter(fn ($item) => in_array($item['categorySlug'], ['vaccines', 'vaccination']))->values();
 
         $consultationTypes = ConsultationType::where('user_id', Auth::id())
             ->orderBy('name')
             ->get()
-            ->map(fn($type) => [
+            ->map(fn ($type) => [
                 'id' => $type->id,
                 'slug' => $type->slug,
                 'name' => $type->name,
