@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('owner_id')->constrained('owners', 'owner_id')->onDelete('cascade');
             $table->foreignId('pet_species_id')->constrained('pet_species', 'pet_species_id');
             $table->string('breed')->nullable();
-            $table->decimal('age', 5, 2)->nullable();
+            $table->integer('age')->nullable();
             $table->decimal('weight', 5, 2)->nullable();
             $table->enum('gender', ['male', 'female']);
             $table->string('color')->nullable();
