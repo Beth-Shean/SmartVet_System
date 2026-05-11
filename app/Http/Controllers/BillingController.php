@@ -23,7 +23,7 @@ class BillingController extends Controller
             ->map(function ($payment) {
                 $isVaccination = $payment->vaccination_id !== null;
                 $isConsultation = $payment->consultation_id !== null;
-                $hasInventorySale = $payment->items->contains(fn($item) => $item->service_type === 'inventory_item');
+                $hasInventorySale = $payment->items->contains(fn ($item) => $item->service_type === 'inventory_item');
 
                 return [
                     'id' => $payment->getKey(),
@@ -126,8 +126,7 @@ class BillingController extends Controller
             $isCreatorOfConsultation = $payment->consultation?->created_by === $user->getKey();
 
             if (($isWalkInSale && $payment->recorded_by !== $user->getKey())
-                || (!$isWalkInSale && $ownerUserId !== $user->getKey() && !$isCreatorOfConsultation)
-            ) {
+                || (!$isWalkInSale && $ownerUserId !== $user->getKey() && !$isCreatorOfConsultation)) {
                 abort(403);
             }
         }

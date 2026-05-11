@@ -42,7 +42,6 @@ interface Pet {
     lastVisit: string | null;
     imageUrl: string | null;
     qrToken: string | null;
-    microchipId?: string;
 }
 
 interface Vaccination {
@@ -77,7 +76,7 @@ interface Consultation {
     complaint: string;
     diagnosis: string;
     treatment?: string;
-    
+    notes?: string | null;
     inventoryItems?: ConsultationInventoryItem[];
     files?: ConsultationFile[];
 }
@@ -261,8 +260,8 @@ export default function MyPets({ pets }: MyPetsProps) {
             title: 'Keep your pet info up to date',
             description: 'Accurate pet details make each visit smoother and safer.',
             bulletPoints: [
-                'You can update your pet’s profile photo only.',
-                'For changes in breed, weight, gender, color, or microchip ID, please contact your clinic.',
+                'Edit your pet’s breed and weight information as needed.',
+                'Ask your clinic to link new pets to your account if they are not visible yet.',
             ],
         },
     ];
@@ -338,7 +337,6 @@ export default function MyPets({ pets }: MyPetsProps) {
         age: string;
         weight: string;
         gender: string;
-        microchipId: string;
     }>({
         petImage: null,
         _method: 'PUT',
@@ -348,7 +346,6 @@ export default function MyPets({ pets }: MyPetsProps) {
         age: '',
         weight: '',
         gender: '',
-        microchipId: '',
     });
 
     const openEdit = (pet: Pet) => {
@@ -364,7 +361,6 @@ export default function MyPets({ pets }: MyPetsProps) {
             age: pet.age != null ? String(pet.age) : '',
             weight: pet.weight != null ? String(pet.weight) : '',
             gender: pet.gender ?? '',
-            microchipId: pet.microchipId ?? '',
         });
     };
 
@@ -473,12 +469,6 @@ export default function MyPets({ pets }: MyPetsProps) {
                                             <p className="font-semibold text-neutral-800">{recordPet?.name ?? '-'}</p>
                                             <p className="text-xs text-neutral-500">{recordPet?.species} · {recordPet?.breed}</p>
                                             <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-neutral-600">
-                                                {recordPetDetails?.microchipId && (
-                                                    <div className="rounded-lg bg-white px-2 py-1">
-                                                        <p className="font-medium">Microchip</p>
-                                                        <p className="truncate">{recordPetDetails.microchipId}</p>
-                                                    </div>
-                                                )}
                                                 {recordPet?.age != null && (
                                                     <div className="rounded-lg bg-white px-2 py-1">
                                                         <p className="font-medium">Age</p>
@@ -627,6 +617,7 @@ export default function MyPets({ pets }: MyPetsProps) {
                                                                 {c.diagnosis && <p className="text-xs text-neutral-600"><span className="font-medium">Diagnosis:</span> {c.diagnosis}</p>}
 
                                                                 {c.treatment && <p className="text-xs text-neutral-600"><span className="font-medium">Treatment:</span> {c.treatment}</p>}
+                                                                <p className="text-xs text-neutral-500 mt-1"><span className="font-medium">Additional Notes:</span> {c.notes ? c.notes : 'N/A'}</p>
 
                                                                 {c.inventoryItems && c.inventoryItems.length > 0 && (
                                                                     <div className="mt-2">
@@ -656,109 +647,91 @@ export default function MyPets({ pets }: MyPetsProps) {
                     </div>
                 </div>
             )}
-
             {/* Edit Pet Modal */}
             {editPet && (
                 <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4" onClick={() => setEditPet(null)}>
-                    <div
-                        className="mx-auto mt-4 w-full max-w-md rounded-2xl bg-white shadow-2xl max-h-[90vh] min-h-[48vh] flex flex-col overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="mx-auto mt-4 w-full max-w-md rounded-2xl bg-white shadow-2xl max-h-[90vh] min-h-[48vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between border-b px-5 py-4">
                             <div>
                                 <p className="text-lg font-semibold text-neutral-900">Edit {editPet.name}</p>
-                                <p className="text-sm text-neutral-500">You can only update your pet's photo.</p>
+                                <p className="text-sm text-neutral-500">Update your pet's basic information</p>
                             </div>
                             <button onClick={() => setEditPet(null)} className="rounded-full p-1 text-neutral-400 hover:text-neutral-700">
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-
                         <form onSubmit={handleEditSubmit} className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="col-span-1 sm:col-span-2 space-y-1">
                                     <Label htmlFor="pet-name">Pet Name</Label>
                                     <Input
                                         id="pet-name"
-                                        value={data.name || 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                        value={data.name}
+                                        onChange={(e) => setData('name', e.target.value)}
+                                        disabled={processing}
                                     />
+                                    {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
                                 </div>
-
                                 <div className="col-span-1 sm:col-span-2 space-y-1">
                                     <Label>Species</Label>
-                                    <Input
-                                        value={editPet?.species ?? 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
-                                    />
+                                    <Input value={editPet?.species ?? ''} disabled />
                                 </div>
-
                                 <div className="space-y-1">
                                     <Label htmlFor="pet-breed">Breed</Label>
                                     <Input
                                         id="pet-breed"
-                                        value={data.breed || 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                        value={data.breed}
+                                        onChange={(e) => setData('breed', e.target.value)}
+                                        disabled={processing}
                                     />
+                                    {errors.breed && <p className="text-xs text-red-500">{errors.breed}</p>}
                                 </div>
-
                                 <div className="space-y-1">
                                     <Label htmlFor="pet-color">Color</Label>
                                     <Input
                                         id="pet-color"
-                                        value={data.color || 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                        value={data.color}
+                                        onChange={(e) => setData('color', e.target.value)}
+                                        disabled={processing}
                                     />
+                                    {errors.color && <p className="text-xs text-red-500">{errors.color}</p>}
                                 </div>
-
                                 <div className="space-y-1">
                                     <Label htmlFor="pet-age">Age (years)</Label>
                                     <Input
                                         id="pet-age"
                                         type="number"
                                         min="0"
-                                        step="any"
+                                        step="1"
                                         value={data.age}
                                         onChange={(e) => setData('age', e.target.value)}
                                         disabled={processing}
                                     />
                                     {errors.age && <p className="text-xs text-red-500">{errors.age}</p>}
                                 </div>
-
                                 <div className="space-y-1">
                                     <Label htmlFor="pet-weight">Weight (kg)</Label>
                                     <Input
                                         id="pet-weight"
-                                        value={data.weight ? `${data.weight} kg` : 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={data.weight}
+                                        onChange={(e) => setData('weight', e.target.value)}
+                                        disabled={processing}
                                     />
+                                    {errors.weight && <p className="text-xs text-red-500">{errors.weight}</p>}
                                 </div>
-
                                 <div className="space-y-1">
                                     <Label htmlFor="pet-gender">Gender</Label>
                                     <Input
                                         id="pet-gender"
-                                        value={data.gender || 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
+                                        value={data.gender}
+                                        onChange={(e) => setData('gender', e.target.value)}
+                                        disabled={processing}
                                     />
+                                    {errors.gender && <p className="text-xs text-red-500">{errors.gender}</p>}
                                 </div>
-
-                                <div className="space-y-1">
-                                    <Label htmlFor="pet-microchip">Microchip ID</Label>
-                                    <Input
-                                        id="pet-microchip"
-                                        value={data.microchipId || 'Not set'}
-                                        disabled
-                                        className="bg-neutral-100 text-neutral-600 cursor-not-allowed"
-                                    />
-                                </div>
-
                                 <div className="col-span-2 space-y-1">
                                     <Label htmlFor="edit-photo">Photo</Label>
                                     <Input
@@ -772,7 +745,6 @@ export default function MyPets({ pets }: MyPetsProps) {
                                     {errors.petImage && <p className="text-xs text-red-500">{errors.petImage}</p>}
                                 </div>
                             </div>
-
                             <div className="flex gap-3 pt-2 pb-1">
                                 <Button type="button" variant="outline" className="flex-1" onClick={() => setEditPet(null)} disabled={processing}>
                                     Cancel

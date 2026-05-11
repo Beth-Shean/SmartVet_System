@@ -77,29 +77,13 @@ function sortRecordsLatestFirst<T extends { date: string }>(records: T[]): T[] {
     return [...records].sort((a, b) => getDateTimestamp(b.date) - getDateTimestamp(a.date));
 }
 
-const getConsultationRecordCreatorId = (record: any): number | undefined => {
-    if (record.createdById === undefined || record.createdById === null) {
-        return undefined;
+const getPaymentStatusDisplay = (paymentStatus: string | null | undefined, isImported: boolean) => {
+    // Hide payment if definitely imported by current clinic
+    // Show payment in all other cases (owner or first time viewing)
+    if (isImported) {
+        return '-';
     }
-
-    const createdById = Number(record.createdById);
-    return Number.isNaN(createdById) ? undefined : createdById;
-};
-
-const canShowConsultationPaymentStatus = (record: any, currentClinicId?: number) => {
-    if (Number.isNaN(currentClinicId) || currentClinicId === undefined) {
-        return false;
-    }
-
-    const createdById = getConsultationRecordCreatorId(record);
-    if (createdById === undefined) {
-        return false;
-    }
-
-    // Only show payment status for consultations created by the current clinic
-    // Completely hide the field for external clinic records
-    const isExternalRecord = createdById !== currentClinicId;
-    return !isExternalRecord;
+    return paymentStatus || 'pending';
 };
 
 interface Pet {
@@ -112,7 +96,6 @@ interface Pet {
     weight: number;
     gender: string;
     color: string;
-    microchipId: string;
     imageUrl: string | null;
     status: string;
     lastVisit: string;
@@ -213,7 +196,7 @@ const getStatusIcon = (status: string) => {
 
 export default function PetManage({ pet, inventoryItems, vaccineItems, consultationTypes }: Props) {
     const { auth } = usePage<SharedData>().props;
-    const currentClinicId = Number((auth.user as { id?: number | string })?.id);
+    const currentClinicId = Number((auth.user as { user_id?: number | string })?.user_id);
     const themeColor = (auth.user as { theme_color?: string })?.theme_color || '#0f172a';
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isAddConsultationOpen, setIsAddConsultationOpen] = useState(false);
@@ -232,9 +215,17 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
     const { success, error } = useToast();
 
     const normalizedClinicIds = (pet.clinicIds || []).map((id) => Number(id)).filter((id) => !Number.isNaN(id));
+    const ownerClinicId = normalizedClinicIds.length > 0 ? normalizedClinicIds[0] : null;
     const petBelongsToCurrentClinic = !Number.isNaN(currentClinicId) && (
-        Number(pet.owner.userId) === currentClinicId || normalizedClinicIds.includes(currentClinicId)
+        ownerClinicId === currentClinicId || normalizedClinicIds.includes(currentClinicId)
     );
+    // Pet is imported if: clinic is in clinicIds BUT is NOT the first element (owner)
+    const isImportedByCurrentClinic =
+        !Number.isNaN(currentClinicId) &&
+        ownerClinicId !== null &&
+        ownerClinicId !== currentClinicId &&
+        normalizedClinicIds.includes(currentClinicId);
+
     const sortedMedicalHistory = sortRecordsLatestFirst(pet.medicalHistory || []);
 
     const inventoryMap = useMemo(() => {
@@ -252,7 +243,6 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
         age: pet.age.toString(),
         weight: pet.weight.toString(),
         color: pet.color,
-        microchipId: pet.microchipId || '',
         // Consultation data
         consultationType: '',
         consultationFee: '',
@@ -302,7 +292,6 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
             age: data.age ? Number(data.age) : null,
             weight: data.weight ? Number(data.weight) : null,
             color: data.color || null,
-            microchipId: data.microchipId || null,
         };
 
         router.put(`/pet-records/${pet.id}`, payload, {
@@ -728,7 +717,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
             description="Comprehensive pet health management and medical records."
         >
             <Head title={`${pet.name} - Pet Management`} />
-            <div className="space-y-4 pb-10">
+            <div className="flex flex-col min-h-screen overflow-visible">
 
             {/* Back Button */}
             <div className="mb-4 shrink-0">
@@ -762,7 +751,7 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
                                         {pet.breed} • {pet.age} years old • {pet.gender}
                                     </p>
                                     <p className="text-sm text-neutral-500">
-                                        ID: {pet.id} • Microchip: {pet.microchipId}
+                                        ID: {pet.id}
                                     </p>
                                 </div>
                                 <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
@@ -894,14 +883,6 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
                                                 <Input
                                                     value={data.color}
                                                     onChange={(e) => setData('color', e.target.value)}
-                                                    disabled={!isEditingProfile}
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Microchip ID</label>
-                                                <Input
-                                                    value={data.microchipId}
-                                                    onChange={(e) => setData('microchipId', e.target.value)}
                                                     disabled={!isEditingProfile}
                                                 />
                                             </div>
@@ -1077,9 +1058,9 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
                                                             </div>
 
                                                             <div className="space-y-2">
-                                                                <label className="text-sm font-medium">Clinical Evaluation During Physical Examination</label>
+                                                                <label className="text-sm font-medium">Additional Notes</label>
                                                                 <Textarea
-                                                                    placeholder="Professional observations during the physical examination (visible to veterinarian only)..."
+                                                                    placeholder="Any additional observations or notes..."
                                                                     value={data.notes}
                                                                     onChange={(e) => setData('notes', e.target.value)}
                                                                     rows={2}
@@ -1265,18 +1246,21 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
                                                     {record.diagnosis || '-'}
                                                 </TableCell>
                                                 <TableCell>
-                                                    {canShowConsultationPaymentStatus(record, currentClinicId) ? (
-                                                        <Badge variant="outline" className={cn(
-                                                            "capitalize",
-                                                            record.paymentStatus === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
-                                                            record.paymentStatus === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                                            "bg-neutral-50 text-neutral-700 border-neutral-200"
-                                                        )}>
-                                                            {record.paymentStatus}
-                                                        </Badge>
-                                                    ) : (
-                                                        '-'
-                                                    )}
+                                                    {(() => {
+                                                        const status = getPaymentStatusDisplay(record.paymentStatus, isImportedByCurrentClinic);
+                                                        return status === '-' ? (
+                                                            <span className="text-neutral-500">-</span>
+                                                        ) : (
+                                                            <Badge variant="outline" className={cn(
+                                                                "capitalize",
+                                                                status === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
+                                                                status === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                                                "bg-neutral-50 text-neutral-700 border-neutral-200"
+                                                            )}>
+                                                                {status}
+                                                            </Badge>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <Button variant="ghost" size="sm" onClick={() => setSelectedConsultation(record)}>
@@ -1313,18 +1297,21 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
                                                 <div>
                                                     <span className="text-sm font-medium text-neutral-500">Payment Status</span>
                                                     <div className="mt-1">
-                                                        {!pet.qrToken && canShowConsultationPaymentStatus(selectedConsultation, currentClinicId) ? (
-                                                            <Badge variant="outline" className={cn(
-                                                                "capitalize",
-                                                                selectedConsultation.paymentStatus === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
-                                                                selectedConsultation.paymentStatus === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                                                "bg-neutral-50 text-neutral-700 border-neutral-200"
-                                                            )}>
-                                                                {selectedConsultation.paymentStatus}
-                                                            </Badge>
-                                                        ) : (
-                                                            <span className="text-sm text-neutral-500">-</span>
-                                                        )}
+                                                        {(() => {
+                                                            const status = getPaymentStatusDisplay(selectedConsultation.paymentStatus, isImportedByCurrentClinic);
+                                                            return status === '-' ? (
+                                                                <span className="text-sm text-neutral-500">-</span>
+                                                            ) : (
+                                                                <Badge variant="outline" className={cn(
+                                                                    "capitalize",
+                                                                    status === 'paid' ? "bg-green-50 text-green-700 border-green-200" :
+                                                                    status === 'pending' ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                                                                    "bg-neutral-50 text-neutral-700 border-neutral-200"
+                                                                )}>
+                                                                    {status}
+                                                                </Badge>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </div>
@@ -1614,15 +1601,22 @@ export default function PetManage({ pet, inventoryItems, vaccineItems, consultat
                                                     {vaccination.administeredBy || <span className="text-muted-foreground">-</span>}
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline" className={vaccination.paymentStatus === 'paid'
-                                                        ? 'border-transparent bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200'
-                                                        : vaccination.paymentStatus === 'pending'
-                                                            ? 'border-transparent bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
-                                                            : 'border-transparent bg-neutral-50 text-neutral-700 dark:border-neutral-400/30 dark:bg-neutral-500/10 dark:text-neutral-200'
-                                                    }>
-                                                        {vaccination.paymentStatus === 'paid' ? <CheckCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-                                                        <span className="ml-1 capitalize">{vaccination.paymentStatus || 'unknown'}</span>
-                                                    </Badge>
+                                                    {(() => {
+                                                        const status = getPaymentStatusDisplay(vaccination.paymentStatus, isImportedByCurrentClinic);
+                                                        return status === '-' ? (
+                                                            <span className="text-sm text-neutral-500">-</span>
+                                                        ) : (
+                                                            <Badge variant="outline" className={status === 'paid'
+                                                                ? 'border-transparent bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+                                                                : status === 'pending'
+                                                                    ? 'border-transparent bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200'
+                                                                    : 'border-transparent bg-neutral-50 text-neutral-700 dark:border-neutral-400/30 dark:bg-neutral-500/10 dark:text-neutral-200'
+                                                            }>
+                                                                {status === 'paid' ? <CheckCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                                                                <span className="ml-1 capitalize">{status}</span>
+                                                            </Badge>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <Button

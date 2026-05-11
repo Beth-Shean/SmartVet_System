@@ -13,7 +13,9 @@ use Laravel\Fortify\Fortify;
 
 class AdminAuthController extends Controller
 {
-    public function __construct(private readonly TurnstileVerifier $turnstileVerifier) {}
+    public function __construct(private readonly TurnstileVerifier $turnstileVerifier)
+    {
+    }
 
     public function showLoginForm(Request $request)
     {
