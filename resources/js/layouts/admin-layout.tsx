@@ -31,6 +31,7 @@ import {
     Settings,
     QrCode,
     Syringe,
+    Globe,
 } from 'lucide-react';
 import { type SharedData, type BreadcrumbItem } from '@/types';
 
@@ -199,6 +200,13 @@ export default function AdminLayout({
             name: 'Owner Management',
             href: '/owner-management',
             icon: PawPrint,
+            adminOnly: true,
+            clinicOnly: false
+        },
+        {
+            name: 'Clinic Visibility',
+            href: '/clinic-visibility',
+            icon: Globe,
             adminOnly: true,
             clinicOnly: false
         },

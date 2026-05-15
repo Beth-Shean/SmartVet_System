@@ -227,8 +227,10 @@ function PetCard({ pet, onShowQr, onShowRecord, onEdit }: { pet: Pet; onShowQr: 
 }
 
 export default function MyPets({ pets }: MyPetsProps) {
-    const { auth } = usePage<SharedData>().props;
-    const [showTour, setShowTour] = useState(!((auth.user as { onboarding_complete?: boolean })?.onboarding_complete));
+    const { auth, alwaysShowOwnerOnboarding } = usePage<SharedData>().props;
+    const [showTour, setShowTour] = useState(
+        Boolean(alwaysShowOwnerOnboarding) || !((auth.user as { onboarding_complete?: boolean })?.onboarding_complete)
+    );
     const hasPets = pets.length > 0;
 
     const ownerOnboardingSteps: OnboardingStep[] = [
@@ -260,7 +262,7 @@ export default function MyPets({ pets }: MyPetsProps) {
             title: 'Keep your pet info up to date',
             description: 'Accurate pet details make each visit smoother and safer.',
             bulletPoints: [
-                'Edit your pet’s breed and weight information as needed.',
+                'Edit your pet’s age and photo as needed.',
                 'Ask your clinic to link new pets to your account if they are not visible yet.',
             ],
         },

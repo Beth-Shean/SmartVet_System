@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Pet;
+use App\Models\User;
+use App\Models\ClinicVisibilityPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -15,12 +17,29 @@ class PetScanController extends Controller
     }
 
     /**
+     * Check if a clinic has permission to view another clinic's history.
+     */
+    private function canViewClinicHistory($currentClinicId, $targetClinicId): bool
+    {
+        // Own clinic can always view its own history
+        if ($currentClinicId === $targetClinicId) {
+            return true;
+        }
+
+        // Check if there's an explicit permission
+        return ClinicVisibilityPermission::where('granting_clinic_id', $targetClinicId)
+            ->where('receiving_clinic_id', $currentClinicId)
+            ->exists();
+    }
+
+    /**
      * Authenticated JSON endpoint — used by the clinic scanner modal.
      */
     public function clinicScan(string $token): JsonResponse
     {
         $user = Auth::user();
-        $clinicName = $user?->clinic_name ?? 'SmartVet';
+        $currentUserId = $user?->getKey();
+        $currentClinicId = $user?->getKey();
 
         $pet = Pet::with([
             'owner.user',
@@ -30,7 +49,26 @@ class PetScanController extends Controller
             'consultations.inventoryUsages.inventoryItem',
         ])->where('qr_token', $token)->firstOrFail();
 
-        $documents = $pet->consultations->flatMap(fn ($c) => $c->files)->map(fn ($f) => [
+        $registeredClinicId = $pet->clinic_ids[0] ?? null;
+        $registeredClinicName = $registeredClinicId
+            ? User::where('user_id', $registeredClinicId)->value('clinic_name')
+            : null;
+
+        $clinicName = $registeredClinicName
+            ?? $pet->owner?->user?->clinic_name
+            ?? $user?->clinic_name
+            ?? 'SmartVet';
+
+        // Get the pet's owner clinic ID
+        $petOwnerClinicId = $pet->owner?->user_id;
+
+        // Check if current clinic has permission to view this pet's history
+        $hasPermission = $this->canViewClinicHistory($currentClinicId, $petOwnerClinicId);
+
+        // Only show history if they have permission
+        $visibleConsultations = $hasPermission ? $pet->consultations : collect();
+
+        $documents = $visibleConsultations->flatMap(fn ($c) => $c->files)->map(fn ($f) => [
             'id'            => $f->getKey(),
             'name'          => $f->original_name ?? $f->file_name,
             'url'           => $f->file_url,
@@ -42,6 +80,7 @@ class PetScanController extends Controller
 
         return response()->json([
             'clinicName' => $clinicName,
+            'hasHistoryAccess' => $hasPermission,
             'pet' => [
                 'name'        => $pet->name,
                 'species'     => $pet->species->name,
@@ -70,7 +109,7 @@ class PetScanController extends Controller
                 'clinicUserId'     => $pet->owner->user_id,
             ],
             'documents'      => $documents,
-            'vaccinations'   => $pet->vaccinations->map(function ($v) use ($pet, $clinicName) {
+            'vaccinations'   => ($hasPermission ? $pet->vaccinations : collect())->map(function ($v) use ($pet, $clinicName) {
                 $ownerClinicName = $pet->owner?->user?->clinic_name ?? $clinicName;
                 return [
                     'vaccine'    => $v->vaccine_name,
@@ -78,8 +117,8 @@ class PetScanController extends Controller
                     'nextDue'    => $v->next_due_date->toDateString(),
                     'clinicName' => $ownerClinicName,
                 ];
-            }),
-            'consultations' => $pet->consultations->map(function ($c) use ($pet, $clinicName) {
+            })->values(),
+            'consultations' => $visibleConsultations->map(function ($c) use ($pet, $clinicName) {
                 $ownerClinicName = $pet->owner?->user?->clinic_name ?? $clinicName;
                 return [
                     'type'       => $c->consultation_type,
@@ -105,7 +144,7 @@ class PetScanController extends Controller
                         'isImage'       => $f->isImage(),
                     ]),
                 ];
-            }),
+            })->values(),
         ]);
     }
 }
