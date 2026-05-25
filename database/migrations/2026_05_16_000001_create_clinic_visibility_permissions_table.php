@@ -18,7 +18,7 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
             $table->timestamp('updated_at')->useCurrent();
 
-            $table->unique(['granting_clinic_id', 'receiving_clinic_id'], 'clinic_visibility_unique');
+            $table->unique(['granting_clinic_id', 'receiving_clinic_id']);
             $table->foreign('granting_clinic_id')->references('user_id')->on('users')->onDelete('cascade');
             $table->foreign('receiving_clinic_id')->references('user_id')->on('users')->onDelete('cascade');
 
